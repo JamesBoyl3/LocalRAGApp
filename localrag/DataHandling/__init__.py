@@ -1,2 +1,2 @@
-
-from .Embeddings import FaissDB
+from .Embeddings import FaissManager
+from .Documents import SQLManager
