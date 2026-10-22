@@ -5,9 +5,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from localrag.DataHandling.Documents import SQLManager
-from localrag.DataHandling.Embeddings import FaissDB
+from localrag.DataHandling.Embeddings import FaissManager
 from localrag.rag_model import RagModel
-from localragapi.app import app
+
+from app import app
 
 from conftest import DIM, FakeEmbedder, FakeGenerator
 
@@ -20,8 +21,13 @@ def client(tmp_path):
     @asynccontextmanager
     async def fake_lifespan(app):
         with SQLManager(str(tmp_path / "t.db")) as store:
-            app.state.rag = RagModel(FakeEmbedder(), FakeGenerator(),
-                                     FaissDB(DIM, str(tmp_path / "t.faiss")), store, top_k=1)
+            app.state.rag = RagModel(
+                FakeEmbedder(),
+                FakeGenerator(),
+                FaissManager(DIM, str(tmp_path / "t.faiss")),
+                store,
+                top_k=1,
+            )
             yield
 
     original = app.router.lifespan_context
@@ -36,12 +42,22 @@ def test_health(client):
 
 
 def test_add_document_then_query(client):
-    r = client.post("/documents", json={"text": "rockets burn fuel to reach orbit", "src": "s.txt", "title": "Space"})
+    r = client.post(
+        "/documents",
+        json={
+            "text": "rockets burn fuel to reach orbit",
+            "src": "s.txt",
+            "title": "Space",
+        },
+    )
     assert r.status_code == 200 and r.json()["chunks_added"] == 1
 
     r = client.post("/query", json={"question": "rockets orbit?"})
     assert r.status_code == 200
-    assert r.json() == {"answer": "fake answer", "sources": [{"title": "Space", "src": "s.txt", "page_no": 1}]}
+    assert r.json() == {
+        "answer": "fake answer",
+        "sources": [{"title": "Space", "src": "s.txt", "page_no": 1}],
+    }
 
 
 def test_query_validates_input(client):
@@ -49,10 +65,21 @@ def test_query_validates_input(client):
 
 
 def test_stream_sends_sources_tokens_then_done(client):
-    client.post("/documents", json={"text": "rockets burn fuel to reach orbit", "src": "s.txt", "title": "Space"})
+    client.post(
+        "/documents",
+        json={
+            "text": "rockets burn fuel to reach orbit",
+            "src": "s.txt",
+            "title": "Space",
+        },
+    )
     r = client.post("/query/stream", json={"question": "rockets orbit?"})
     assert r.headers["content-type"].startswith("text/event-stream")
     events = [line[6:] for line in r.text.splitlines() if line.startswith("data: ")]
     assert json.loads(events[0])["sources"][0]["title"] == "Space"
-    assert [json.loads(e)["token"] for e in events[1:-1]] == ["fake ", "streamed ", "answer"]
+    assert [json.loads(e)["token"] for e in events[1:-1]] == [
+        "fake ",
+        "streamed ",
+        "answer",
+    ]
     assert events[-1] == "[DONE]"

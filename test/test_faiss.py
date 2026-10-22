@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from localrag.core import DocumentChunk
-from localrag.DataHandling.Embeddings import FaissDB  # adjust to your module path
+from localrag.DataHandling.Embeddings import FaissManager
 
 DIM = 4
 
@@ -11,14 +11,15 @@ DIM = 4
 def make_chunk(id: int, embedding: np.ndarray) -> DocumentChunk:
     # Adjust to DocumentChunk's real constructor (it may need text, metadata, etc.)
     return DocumentChunk(
-            src = "https:example.pdf", 
-            title = "Examples",
-            author = "Joe Schmitt",
-            content = "A place for examples",
-            page_no = 1,
-            id=id, 
-            embedding=embedding
-            )
+        src="https:example.pdf",
+        title="Examples",
+        author="Joe Schmitt",
+        content="A place for examples",
+        page_no=1,
+        year=2000,
+        id=id,
+        embedding=embedding,
+    )
 
 
 @pytest.fixture
@@ -28,7 +29,7 @@ def index_path(tmp_path):
 
 @pytest.fixture
 def db(index_path):
-    return FaissDB(DIM, index_path)
+    return FaissManager(DIM, index_path)
 
 
 @pytest.fixture
@@ -40,35 +41,38 @@ def basis_chunks():
 
 # --- creating / loading ---
 
+
 def test_creates_file_when_missing(index_path):
     import os
+
     assert not os.path.exists(index_path)
-    FaissDB(DIM, index_path)
+    FaissManager(DIM, index_path)
     assert os.path.exists(index_path)
 
 
 def test_loads_existing_index(index_path, basis_chunks):
-    first = FaissDB(DIM, index_path)
+    first = FaissManager(DIM, index_path)
     first.add_embedding(basis_chunks)
 
-    second = FaissDB(DIM, index_path)  # should load, not recreate
+    second = FaissManager(DIM, index_path)  # should load, not recreate
     query = np.eye(DIM, dtype=np.float32)[2:3]
     assert second.search_db(query, top_k=1) == [30]
 
 
 def test_wrong_dim_raises(index_path):
-    FaissDB(DIM, index_path)
+    FaissManager(DIM, index_path)
     with pytest.raises(TypeError):
-        FaissDB(DIM + 1, index_path)
+        FaissManager(DIM + 1, index_path)
 
 
 def test_wrong_index_type_raises(index_path):
     faiss.write_index(faiss.IndexFlatIP(DIM), index_path)  # not an IndexIDMap
     with pytest.raises(TypeError):
-        FaissDB(DIM, index_path)
+        FaissManager(DIM, index_path)
 
 
 # --- add_embedding / search_db ---
+
 
 def test_add_single_chunk(db):
     db.add_embedding(make_chunk(7, np.eye(DIM, dtype=np.float32)[0]))
@@ -97,6 +101,7 @@ def test_search_filters_missing_results(db, basis_chunks):
 
 # --- _save ---
 
+
 def test_add_embedding_persists_to_disk(index_path, db, basis_chunks):
     db.add_embedding(basis_chunks)
     assert faiss.read_index(index_path).ntotal == len(basis_chunks)
@@ -104,6 +109,7 @@ def test_add_embedding_persists_to_disk(index_path, db, basis_chunks):
 
 def test_save_recreates_deleted_file(index_path, db):
     import os
+
     os.remove(index_path)
     db._save()
     assert os.path.exists(index_path)

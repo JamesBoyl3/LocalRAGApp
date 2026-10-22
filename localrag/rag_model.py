@@ -6,6 +6,11 @@ from localrag.core import DocumentChunk
 from .Clients import EmbeddingClient, GenerationClient
 from .DataHandling import FaissManager, SQLManager
 
+
+def chunk_text(texts):
+    return texts
+
+
 SYSTEM_PROMPT = (
     "Answer the question using only the context below. "
     "If the context does not contain the answer, say you don't know. "
@@ -42,7 +47,7 @@ class RagModel:
     async def add_text(
         self, text: str, src: str, title: str = "", author: str = "", page_no: int = 1
     ) -> list[int]:
-        pieces = chunk_text(text) """REWRITE THIS!!!!!!"""
+        pieces = chunk_text(text)  # """REWRITE THIS!!!!!!"""
         if not pieces:
             return []
 

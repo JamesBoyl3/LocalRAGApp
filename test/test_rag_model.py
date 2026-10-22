@@ -1,7 +1,7 @@
 import pytest
 
 from localrag.DataHandling.Documents import SQLManager
-from localrag.DataHandling.Embeddings import FaissDB
+from localrag.DataHandling.Embeddings import FaissManager
 from localrag.rag_model import RagModel
 
 from conftest import DIM, FakeEmbedder, FakeGenerator
@@ -18,7 +18,13 @@ def generator():
 def rag(tmp_path, generator):
     # Real SQLite + real FAISS (in a temp dir); only the llama servers are faked.
     with SQLManager(str(tmp_path / "t.db")) as store:
-        yield RagModel(FakeEmbedder(), generator, FaissDB(DIM, str(tmp_path / "t.faiss")), store, top_k=1)
+        yield RagModel(
+            FakeEmbedder(),
+            generator,
+            FaissManager(DIM, str(tmp_path / "t.faiss")),
+            store,
+            top_k=1,
+        )
 
 
 async def test_add_text_returns_ids_and_stores_in_both_databases(rag):
@@ -29,13 +35,17 @@ async def test_add_text_returns_ids_and_stores_in_both_databases(rag):
 
 async def test_retrieve_finds_the_relevant_chunk(rag):
     await rag.add_text("cats purr and nap all day", src="cats.txt", title="Cats")
-    await rag.add_text("rockets burn fuel to reach orbit", src="space.txt", title="Space")
+    await rag.add_text(
+        "rockets burn fuel to reach orbit", src="space.txt", title="Space"
+    )
     top = await rag.retrieve("how do rockets reach orbit")
     assert [c.title for c in top] == ["Space"]
 
 
 async def test_get_query_puts_context_in_prompt_and_returns_sources(rag, generator):
-    await rag.add_text("rockets burn fuel to reach orbit", src="space.txt", title="Space")
+    await rag.add_text(
+        "rockets burn fuel to reach orbit", src="space.txt", title="Space"
+    )
     result = await rag.get_query("rockets orbit?")
     assert result.answer == "fake answer"
     assert result.sources[0].title == "Space"
@@ -51,7 +61,9 @@ async def test_query_with_empty_database_still_answers(rag, generator):
 
 
 async def test_stream_query_returns_sources_then_tokens(rag):
-    await rag.add_text("rockets burn fuel to reach orbit", src="space.txt", title="Space")
+    await rag.add_text(
+        "rockets burn fuel to reach orbit", src="space.txt", title="Space"
+    )
     chunks, tokens = await rag.stream_query("rockets orbit?")
     assert chunks[0].title == "Space"
     assert "".join([t async for t in tokens]) == "fake streamed answer"
